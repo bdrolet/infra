@@ -1,0 +1,62 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: openclaw
+  namespace: apps
+  labels:
+    app: openclaw
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: openclaw
+  template:
+    metadata:
+      labels:
+        app: openclaw
+    spec:
+      containers:
+        - name: openclaw
+          # Push this image before applying:
+          #   gcloud auth configure-docker us-central1-docker.pkg.dev
+          #   git clone https://github.com/openclaw/openclaw.git && cd openclaw
+          #   docker build -t us-central1-docker.pkg.dev/bens-project-462804/openclaw/openclaw:latest .
+          #   docker push us-central1-docker.pkg.dev/bens-project-462804/openclaw/openclaw:latest
+          image: us-central1-docker.pkg.dev/bens-project-462804/openclaw/openclaw:latest
+          command:
+            - node
+            - dist/index.js
+            - gateway
+            - --bind
+            - lan
+            - --port
+            - "18789"
+            - --allow-unconfigured
+          ports:
+            - containerPort: 18789
+          env:
+            - name: NODE_ENV
+              value: production
+            - name: XDG_CONFIG_HOME
+              value: /home/node/.openclaw
+            - name: HOME
+              value: /home/node
+          envFrom:
+            - secretRef:
+                name: openclaw-credentials
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: 1000m
+              memory: 1Gi
+          volumeMounts:
+            - name: data
+              mountPath: /home/node/.openclaw
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: openclaw-data
