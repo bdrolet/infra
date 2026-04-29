@@ -14,4 +14,4 @@ USER node
 WORKDIR /home/node
 EXPOSE 18789
 
-CMD ["openclaw", "gateway", "--bind", "lan", "--port", "18789"]
+CMD ["openclaw", "gateway", "--bind", "lan", "--port", "18789", "--allow-unconfigured"]
