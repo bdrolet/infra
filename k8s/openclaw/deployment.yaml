@@ -19,21 +19,12 @@ spec:
     spec:
       containers:
         - name: openclaw
-          # Push this image before applying:
-          #   gcloud auth configure-docker us-central1-docker.pkg.dev
-          #   git clone https://github.com/openclaw/openclaw.git && cd openclaw
-          #   docker build -t us-central1-docker.pkg.dev/bens-project-462804/openclaw/openclaw:latest .
+          # Build and push before applying:
+          #   docker build --platform linux/amd64 \
+          #     -t us-central1-docker.pkg.dev/bens-project-462804/openclaw/openclaw:latest \
+          #     k8s/openclaw/
           #   docker push us-central1-docker.pkg.dev/bens-project-462804/openclaw/openclaw:latest
           image: us-central1-docker.pkg.dev/bens-project-462804/openclaw/openclaw:latest
-          command:
-            - node
-            - dist/index.js
-            - gateway
-            - --bind
-            - lan
-            - --port
-            - "18789"
-            - --allow-unconfigured
           ports:
             - containerPort: 18789
           env:
