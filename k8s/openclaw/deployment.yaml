@@ -17,6 +17,8 @@ spec:
       labels:
         app: openclaw
     spec:
+      securityContext:
+        fsGroup: 1000
       containers:
         - name: openclaw
           # Build and push before applying:
