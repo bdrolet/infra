@@ -1,0 +1,34 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: blog
+  namespace: apps
+  labels:
+    app: blog
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: blog
+  template:
+    metadata:
+      labels:
+        app: blog
+    spec:
+      containers:
+        - name: blog
+          # Build and push before applying:
+          #   docker build --platform linux/amd64 \
+          #     -t us-central1-docker.pkg.dev/bens-project-462804/blog/blog:latest \
+          #     <path-to-bens-blog-repo>
+          #   docker push us-central1-docker.pkg.dev/bens-project-462804/blog/blog:latest
+          image: us-central1-docker.pkg.dev/bens-project-462804/blog/blog:latest
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 128Mi

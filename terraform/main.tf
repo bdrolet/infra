@@ -27,6 +27,30 @@ resource "google_artifact_registry_repository" "openclaw" {
   depends_on = [google_project_service.artifactregistry]
 }
 
+resource "google_artifact_registry_repository" "blog" {
+  repository_id = "blog"
+  format        = "DOCKER"
+  location      = var.region
+  description   = "Astro blog image"
+
+  depends_on = [google_project_service.artifactregistry]
+}
+
+resource "google_compute_firewall" "gke_health_checks" {
+  name    = "gke-bens-k8s-allow-health-checks"
+  network = "default"
+
+  allow {
+    protocol = "tcp"
+    ports    = ["80"]
+  }
+
+  source_ranges = ["35.191.0.0/16", "130.211.0.0/22"]
+  description   = "Allow GCP load balancer health checks to reach pods on port 80"
+
+  depends_on = [google_project_service.compute]
+}
+
 resource "google_container_cluster" "autopilot" {
   name     = var.cluster_name
   location = var.region

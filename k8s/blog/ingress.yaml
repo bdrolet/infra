@@ -1,0 +1,22 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: blog
+  namespace: apps
+  annotations:
+    kubernetes.io/ingress.class: "gce"
+    networking.gke.io/managed-certificates: "blog-cert"
+    networking.gke.io/v1beta1.FrontendConfig: "blog-frontend"
+    kubernetes.io/ingress.allow-http: "true"
+spec:
+  rules:
+    - host: blog.drolet.cloud
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: blog
+                port:
+                  number: 80

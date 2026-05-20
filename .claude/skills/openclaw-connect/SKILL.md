@@ -12,20 +12,27 @@ OpenClaw runs in the `apps` namespace as a `ClusterIP` service on port `18789`. 
 Port `18789` is typically used by a local OpenClaw instance, so use `18790` for the k8s one:
 
 ```bash
-kubectl port-forward -n apps svc/openclaw 18790:18789
+kubectl port-forward -n apps svc/openclaw 18790:18789 &
 ```
 
-Then open: `http://localhost:18790`
+Then open the UI in the browser:
+
+```bash
+open http://localhost:18790
+```
 
 ## Gateway token (UI login)
 
-The Control UI requires a token. Retrieve it from the pod:
+The Control UI requires a token. Retrieve it and open the settings page:
 
 ```bash
-kubectl exec -n apps deployment/openclaw -- sh -c "cat /home/node/.openclaw/openclaw.json"
+kubectl exec -n apps deployment/openclaw -- sh -c "cat /home/node/.openclaw/openclaw.json" \
+  | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['gateway']['auth']['token'])"
+
+open http://localhost:18790/settings
 ```
 
-Paste the value of `gateway.auth.token` into the Control UI settings in the browser.
+Paste the token into the Control UI settings.
 
 ## Claude CLI auth
 
