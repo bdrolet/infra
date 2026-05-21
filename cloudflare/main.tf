@@ -21,12 +21,12 @@ resource "cloudflare_pages_project" "consulting" {
 resource "cloudflare_pages_domain" "consulting" {
   account_id   = var.account_id
   project_name = cloudflare_pages_project.consulting.name
-  domain       = "${var.subdomain}.${var.domain_name}"
+  domain       = var.domain_name
 }
 
 resource "cloudflare_record" "consulting" {
   zone_id = var.zone_id
-  name    = var.subdomain
+  name    = "@"
   type    = "CNAME"
   content = "${cloudflare_pages_project.consulting.name}.pages.dev"
   proxied = true

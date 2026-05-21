@@ -5,7 +5,7 @@ output "pages_url" {
 
 output "custom_domain" {
   description = "Custom domain URL for the consulting site"
-  value       = "https://${var.subdomain}.${var.domain_name}"
+  value       = "https://${var.domain_name}"
 }
 
 output "pages_project_name" {

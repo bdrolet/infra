@@ -19,12 +19,6 @@ variable "domain_name" {
   type        = string
 }
 
-variable "subdomain" {
-  description = "Subdomain for the consulting site (e.g. consulting → consulting.example.com)"
-  type        = string
-  default     = "consulting"
-}
-
 variable "github_owner" {
   description = "GitHub username or org that owns the consulting repo"
   type        = string

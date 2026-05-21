@@ -10,5 +10,4 @@
 account_id   = "your-cloudflare-account-id"
 zone_id      = "your-cloudflare-zone-id"
 domain_name  = "example.com"
-subdomain    = "consulting"
 github_owner = "your-github-username"
