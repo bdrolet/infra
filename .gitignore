@@ -3,6 +3,7 @@
 *.tfstate
 *.tfstate.*
 *.tfvars
+!*.tfvars.example
 crash.log
 override.tf
 override.tf.json
@@ -12,7 +13,6 @@ override.tf.json
 
 # Credentials
 *.json
-!terraform.tfvars.example
 
 # K8s secrets (apply manually, don't commit real credentials)
 k8s/**/secret.yaml

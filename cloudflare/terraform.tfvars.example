@@ -1,0 +1,14 @@
+# Copy to terraform.tfvars and fill in real values.
+# Never commit terraform.tfvars — it's caught by .gitignore.
+#
+# Set the API token via environment variable instead of tfvars:
+#   export TF_VAR_cloudflare_api_token="your-api-token"
+#
+# Find account_id and zone_id in the Cloudflare dashboard under
+# your domain's Overview page (right sidebar).
+
+account_id   = "your-cloudflare-account-id"
+zone_id      = "your-cloudflare-zone-id"
+domain_name  = "example.com"
+subdomain    = "consulting"
+github_owner = "your-github-username"
