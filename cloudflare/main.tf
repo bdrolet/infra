@@ -3,6 +3,11 @@ resource "cloudflare_pages_project" "consulting" {
   name              = "consulting"
   production_branch = "main"
 
+  build_config {
+    build_command   = "next build"
+    destination_dir = "out"
+  }
+
   source {
     type = "github"
     config {
@@ -28,7 +33,7 @@ resource "cloudflare_record" "consulting" {
   zone_id = var.zone_id
   name    = "@"
   type    = "CNAME"
-  content = "${cloudflare_pages_project.consulting.name}.pages.dev"
+  content = cloudflare_pages_project.consulting.subdomain
   proxied = true
 
   depends_on = [cloudflare_pages_project.consulting]
