@@ -7,7 +7,7 @@ resource "cloudflare_pages_project" "consulting" {
     type = "github"
     config {
       owner                         = var.github_owner
-      repo_name                     = "consulting"
+      repo_name                     = "consulting-website"
       production_branch             = "main"
       pr_comments_enabled           = true
       deployments_enabled           = true
