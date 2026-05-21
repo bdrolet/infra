@@ -1,0 +1,108 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cluster-collector-config
+  namespace: observability
+  labels:
+    app: cluster-collector
+    managed-by: kubectl
+data:
+  collector.yaml: |
+    extensions:
+      health_check:
+        endpoint: 0.0.0.0:13133
+
+    receivers:
+      # Watches the Kubernetes Events API across all namespaces and converts
+      # events to OTel log records. Run as a single Deployment (not DaemonSet)
+      # to avoid duplicate events from multiple collector instances.
+      k8s_events:
+        namespaces: []  # empty = all namespaces
+        auth_type: serviceAccount
+
+    processors:
+      memory_limiter:
+        check_interval: 1s
+        limit_percentage: 75
+        spike_limit_percentage: 15
+
+      # Tag each event with service.name so Loki indexes it as job="k8s-events".
+      resource:
+        attributes:
+          - key: service.name
+            value: k8s-events
+            action: upsert
+
+      batch:
+        send_batch_size: 1000
+        timeout: 5s
+
+    exporters:
+      loki:
+        endpoint: http://loki.observability.svc.cluster.local:3100/loki/api/v1/push
+        default_labels_enabled:
+          exporter: false
+          job: true
+
+    service:
+      extensions: [health_check]
+      pipelines:
+        logs:
+          receivers: [k8s_events]
+          processors: [memory_limiter, resource, batch]
+          exporters: [loki]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cluster-collector
+  namespace: observability
+  labels:
+    app: cluster-collector
+    managed-by: kubectl
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cluster-collector
+  template:
+    metadata:
+      labels:
+        app: cluster-collector
+    spec:
+      serviceAccountName: otel-collector
+      containers:
+        - name: collector
+          image: otel/opentelemetry-collector-contrib:0.120.0
+          args:
+            - --config=/etc/otelcol/collector.yaml
+          ports:
+            - name: health
+              containerPort: 13133
+              protocol: TCP
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+          volumeMounts:
+            - name: config
+              mountPath: /etc/otelcol
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 13133
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 13133
+            initialDelaySeconds: 15
+            periodSeconds: 20
+      volumes:
+        - name: config
+          configMap:
+            name: cluster-collector-config

@@ -1,0 +1,79 @@
+# helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+# helm upgrade --install prometheus prometheus-community/prometheus -n observability -f prometheus-values.yaml
+
+server:
+  retention: 30d
+
+  nodeSelector:
+    cloud.google.com/gke-spot: "true"
+
+  persistentVolume:
+    enabled: true
+    size: 20Gi
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 1Gi
+
+  global:
+    scrape_interval: 30s
+    evaluation_interval: 30s
+
+# Discover and scrape all otel-collector DaemonSet pods on their :8889 metrics port
+extraScrapeConfigs: |
+  - job_name: otel-collectors
+    kubernetes_sd_configs:
+      - role: pod
+        namespaces:
+          names:
+            - observability
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_pod_label_app]
+        action: keep
+        regex: otel-collector
+      - source_labels: [__meta_kubernetes_pod_ip]
+        action: replace
+        target_label: __address__
+        replacement: "$1:8889"
+      - source_labels: [__meta_kubernetes_pod_node_name]
+        target_label: node
+
+  # Per-container CPU and memory utilization from cAdvisor, routed through
+  # the API server proxy so no hostPath or host network access is needed.
+  # Works on GKE Autopilot. Produces metrics like container_cpu_usage_seconds_total
+  # and container_memory_working_set_bytes.
+  - job_name: kubernetes-cadvisor
+    scheme: https
+    tls_config:
+      ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+      insecure_skip_verify: true
+    bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+    kubernetes_sd_configs:
+      - role: node
+    relabel_configs:
+      - target_label: __address__
+        replacement: kubernetes.default.svc:443
+      - source_labels: [__meta_kubernetes_node_name]
+        target_label: __metrics_path__
+        replacement: /api/v1/nodes/$1/proxy/metrics/cadvisor
+      - action: labelmap
+        regex: __meta_kubernetes_node_label_(.+)
+
+# node-exporter requires hostPID + hostNetwork, both blocked by GKE Autopilot
+prometheus-node-exporter:
+  enabled: false
+
+prometheus-pushgateway:
+  enabled: false
+
+alertmanager:
+  enabled: false
+
+kube-state-metrics:
+  enabled: true
+  nodeSelector:
+    cloud.google.com/gke-spot: "true"

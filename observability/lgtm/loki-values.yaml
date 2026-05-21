@@ -1,0 +1,114 @@
+# helm repo add grafana https://grafana.github.io/helm-charts
+# helm upgrade --install loki grafana/loki -n observability -f loki-values.yaml
+
+deploymentMode: SingleBinary
+
+loki:
+  auth_enabled: false
+
+  commonConfig:
+    replication_factor: 1
+
+  storage:
+    type: filesystem
+
+  schemaConfig:
+    configs:
+      - from: "2024-04-01"
+        store: tsdb
+        object_store: filesystem
+        schema: v13
+        index:
+          prefix: index_
+          period: 24h
+
+  limits_config:
+    max_global_streams_per_user: 10000
+    retention_period: 720h  # 30 days
+
+  compactor:
+    retention_enabled: true
+    delete_request_store: filesystem
+    working_directory: /var/loki/retention
+    compaction_interval: 10m
+    retention_delete_delay: 2h
+    retention_delete_worker_count: 150
+
+singleBinary:
+  replicas: 1
+
+  nodeSelector:
+    cloud.google.com/gke-spot: "true"
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+  persistence:
+    enabled: true
+    size: 20Gi
+
+  # Give Loki time to exhaust its 10-attempt memberlist retry loop (~60s)
+  # before the liveness probe kills it. Single-binary can't resolve its own
+  # memberlist DNS until it's ready, so a short initial delay causes a restart loop.
+  livenessProbe:
+    httpGet:
+      path: /ready
+      port: http-metrics
+    initialDelaySeconds: 120
+    failureThreshold: 10
+  readinessProbe:
+    httpGet:
+      path: /ready
+      port: http-metrics
+    initialDelaySeconds: 30
+    failureThreshold: 10
+
+# Disable multi-component mode (unused for SingleBinary)
+read:
+  replicas: 0
+write:
+  replicas: 0
+backend:
+  replicas: 0
+
+# Object storage not needed for filesystem mode
+minio:
+  enabled: false
+
+# Gateway adds complexity without benefit at this scale
+gateway:
+  enabled: false
+
+# Canary is for production SLA monitoring — unnecessary for personal use
+lokiCanary:
+  enabled: false
+
+# Chart test validates via canary; disable both together
+test:
+  enabled: false
+
+# Defaults are sized for production ingestion; shrink for personal use
+chunksCache:
+  allocatedMemory: 256
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 200m
+      memory: 512Mi
+
+resultsCache:
+  allocatedMemory: 128
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 100m
+      memory: 256Mi

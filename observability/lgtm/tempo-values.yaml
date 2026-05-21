@@ -1,0 +1,43 @@
+# helm repo add grafana https://grafana.github.io/helm-charts
+# helm upgrade --install tempo grafana/tempo -n observability -f tempo-values.yaml
+
+tempo:
+  reportingEnabled: false
+
+  retention: 720h  # 30 days
+
+  storage:
+    trace:
+      backend: local
+      local:
+        path: /var/tempo/traces
+      wal:
+        path: /var/tempo/wal
+
+  # Accept OTLP from the collector over gRPC and HTTP
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317
+        http:
+          endpoint: 0.0.0.0:4318
+
+nodeSelector:
+  cloud.google.com/gke-spot: "true"
+
+persistence:
+  enabled: true
+  size: 10Gi
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+# Jaeger query UI — not needed since Grafana handles trace browsing
+tempoQuery:
+  enabled: false
