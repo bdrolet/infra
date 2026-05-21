@@ -28,7 +28,7 @@ resource "cloudflare_record" "consulting" {
   zone_id = var.zone_id
   name    = var.subdomain
   type    = "CNAME"
-  value   = "${cloudflare_pages_project.consulting.name}.pages.dev"
+  content = "${cloudflare_pages_project.consulting.name}.pages.dev"
   proxied = true
 
   depends_on = [cloudflare_pages_project.consulting]
