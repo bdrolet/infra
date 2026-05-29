@@ -1,0 +1,18 @@
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: inbox-processor
+  namespace: apps
+spec:
+  scaleTargetRef:
+    name: inbox-processor
+  minReplicaCount: 0
+  maxReplicaCount: 3
+  # Wait 5 minutes of empty queue before scaling back to 0
+  cooldownPeriod: 300
+  triggers:
+    - type: gcp-pubsub
+      metadata:
+        subscriptionName: inbox-messages-pull
+        mode: SubscriptionSize
+        value: "1"
