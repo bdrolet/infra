@@ -38,3 +38,10 @@ resource "cloudflare_record" "consulting" {
 
   depends_on = [cloudflare_pages_project.consulting]
 }
+
+resource "cloudflare_record" "ms_verify" {
+  zone_id = var.zone_id
+  name    = "@"
+  type    = "TXT"
+  content = "MS=ms29767756"
+}

@@ -1,0 +1,39 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: pgvector-init
+  namespace: apps
+spec:
+  template:
+    spec:
+      containers:
+        - name: pgvector-init
+          image: postgres:16
+          command:
+            - psql
+            - -h
+            - postgres.apps.svc.cluster.local
+            - -U
+            - $(POSTGRES_USER)
+            - -d
+            - $(POSTGRES_DB)
+            - -c
+            - "CREATE EXTENSION IF NOT EXISTS vector;"
+          env:
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: POSTGRES_USER
+            - name: POSTGRES_DB
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: POSTGRES_DB
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: POSTGRES_PASSWORD
+      restartPolicy: Never
+  backoffLimit: 3
