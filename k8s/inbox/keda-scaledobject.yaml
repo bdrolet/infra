@@ -1,4 +1,12 @@
 apiVersion: keda.sh/v1alpha1
+kind: ClusterTriggerAuthentication
+metadata:
+  name: keda-gcp-pubsub
+spec:
+  podIdentity:
+    provider: gcp
+---
+apiVersion: keda.sh/v1alpha1
 kind: ScaledObject
 metadata:
   name: inbox-processor
@@ -12,6 +20,9 @@ spec:
   cooldownPeriod: 300
   triggers:
     - type: gcp-pubsub
+      authenticationRef:
+        name: keda-gcp-pubsub
+        kind: ClusterTriggerAuthentication
       metadata:
         subscriptionName: inbox-messages-pull
         mode: SubscriptionSize
