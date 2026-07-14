@@ -10,7 +10,7 @@ prometheus.exporter.gcp "infra" {
     "compute.googleapis.com/instance", // GKE node metrics (from GCP side)
     "artifactregistry.googleapis.com", // image pull counts
   ]
-  ingest_delay            = "300s"  // Cloud Monitoring has ~5min ingestion lag
+  ingest_delay            = true  // honour per-metric Cloud Monitoring ingestion delays
   drop_delegated_projects = true
 }
 

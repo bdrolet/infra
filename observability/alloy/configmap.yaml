@@ -13,7 +13,7 @@ data:
         "compute.googleapis.com/instance",
         "artifactregistry.googleapis.com",
       ]
-      ingest_delay            = "300s"
+      ingest_delay            = true
       drop_delegated_projects = true
     }
 
