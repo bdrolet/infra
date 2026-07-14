@@ -64,3 +64,61 @@ resource "google_container_cluster" "autopilot" {
     google_project_service.container,
   ]
 }
+
+resource "google_project_service" "bigquery" {
+  service            = "bigquery.googleapis.com"
+  disable_on_destroy = false
+}
+
+resource "google_artifact_registry_repository" "billing_exporter" {
+  repository_id = "billing-exporter"
+  format        = "DOCKER"
+  location      = var.region
+  description   = "GCP billing exporter image"
+
+  depends_on = [google_project_service.artifactregistry]
+}
+
+# --- Grafana Alloy (Cloud Monitoring reader) ---
+
+resource "google_service_account" "alloy" {
+  account_id   = "alloy-gcp"
+  display_name = "Grafana Alloy (Cloud Monitoring reader)"
+}
+
+resource "google_project_iam_member" "alloy_monitoring_viewer" {
+  project = var.project_id
+  role    = "roles/monitoring.viewer"
+  member  = "serviceAccount:${google_service_account.alloy.email}"
+}
+
+resource "google_service_account_iam_member" "alloy_workload_identity" {
+  service_account_id = google_service_account.alloy.name
+  role               = "roles/iam.workloadIdentityUser"
+  member             = "serviceAccount:${var.project_id}.svc.id.goog[observability/alloy]"
+}
+
+# --- Billing Exporter (BigQuery reader) ---
+
+resource "google_service_account" "billing_exporter" {
+  account_id   = "billing-exporter"
+  display_name = "GCP Billing Exporter (BigQuery reader)"
+}
+
+resource "google_bigquery_dataset_iam_member" "billing_exporter_viewer" {
+  dataset_id = "billing_export"
+  role       = "roles/bigquery.dataViewer"
+  member     = "serviceAccount:${google_service_account.billing_exporter.email}"
+}
+
+resource "google_project_iam_member" "billing_exporter_job_user" {
+  project = var.project_id
+  role    = "roles/bigquery.jobUser"
+  member  = "serviceAccount:${google_service_account.billing_exporter.email}"
+}
+
+resource "google_service_account_iam_member" "billing_exporter_workload_identity" {
+  service_account_id = google_service_account.billing_exporter.name
+  role               = "roles/iam.workloadIdentityUser"
+  member             = "serviceAccount:${var.project_id}.svc.id.goog[apps/billing-exporter]"
+}

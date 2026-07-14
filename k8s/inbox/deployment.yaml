@@ -49,6 +49,10 @@ spec:
               value: "postgres.apps.svc.cluster.local"
             - name: POSTGRES_PORT
               value: "5432"
+            - name: GRPC_VERBOSITY
+              value: "ERROR"
+            - name: GRPC_TRACE
+              value: ""
           resources:
             requests:
               cpu: "1"

@@ -1,0 +1,37 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: billing-exporter
+  namespace: apps
+spec:
+  schedule: "0 */6 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          serviceAccountName: billing-exporter
+          restartPolicy: OnFailure
+          containers:
+            - name: billing-exporter
+              # Build and push before applying:
+              #   docker build --platform linux/amd64 \
+              #     -t us-central1-docker.pkg.dev/bens-project-462804/billing-exporter/billing-exporter:latest \
+              #     billing-exporter/
+              #   docker push us-central1-docker.pkg.dev/bens-project-462804/billing-exporter/billing-exporter:latest
+              image: us-central1-docker.pkg.dev/bens-project-462804/billing-exporter/billing-exporter:latest
+              envFrom:
+                - secretRef:
+                    name: grafana-cloud-otlp
+              env:
+                - name: GCP_PROJECT_ID
+                  value: "bens-project-462804"
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 256Mi
+                limits:
+                  cpu: 100m
+                  memory: 256Mi

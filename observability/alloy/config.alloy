@@ -1,0 +1,31 @@
+// Pull GCP Cloud Monitoring metrics and remote_write to Grafana Cloud.
+// Covers the infrastructure layer the OTel Collector cannot see:
+// load balancer, Pub/Sub, GKE system metrics, Artifact Registry.
+
+prometheus.exporter.gcp "infra" {
+  project_ids      = ["bens-project-462804"]
+  metrics_prefixes = [
+    "loadbalancing.googleapis.com",    // ALB request rate, latency, error rate
+    "pubsub.googleapis.com",           // inbox queue depth, oldest message age
+    "compute.googleapis.com/instance", // GKE node metrics (from GCP side)
+    "artifactregistry.googleapis.com", // image pull counts
+  ]
+  ingest_delay            = true  // honour per-metric Cloud Monitoring ingestion delays
+  drop_delegated_projects = true
+}
+
+prometheus.scrape "gcp" {
+  targets         = prometheus.exporter.gcp.infra.targets
+  forward_to      = [prometheus.remote_write.grafana_cloud.receiver]
+  scrape_interval = "5m"
+}
+
+prometheus.remote_write "grafana_cloud" {
+  endpoint {
+    url = sys.env("GRAFANA_CLOUD_PROMETHEUS_URL")
+    basic_auth {
+      username = sys.env("GRAFANA_CLOUD_PROMETHEUS_USER")
+      password = sys.env("GRAFANA_CLOUD_PROMETHEUS_PASSWORD")
+    }
+  }
+}

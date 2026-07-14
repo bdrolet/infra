@@ -1,0 +1,48 @@
+# helm repo add grafana https://grafana.github.io/helm-charts
+# helm repo update
+# kubectl apply -f observability/alloy/configmap.yaml
+# helm upgrade --install alloy grafana/alloy -n observability -f observability/alloy/values.yaml
+
+alloy:
+  configMap:
+    create: false
+    name: alloy-config
+    key: config.alloy
+
+  extraEnv:
+    - name: GRAFANA_CLOUD_PROMETHEUS_URL
+      valueFrom:
+        secretKeyRef:
+          name: grafana-cloud-prometheus
+          key: url
+    - name: GRAFANA_CLOUD_PROMETHEUS_USER
+      valueFrom:
+        secretKeyRef:
+          name: grafana-cloud-prometheus
+          key: username
+    - name: GRAFANA_CLOUD_PROMETHEUS_PASSWORD
+      valueFrom:
+        secretKeyRef:
+          name: grafana-cloud-prometheus
+          key: password
+
+serviceAccount:
+  create: true
+  name: alloy
+  annotations:
+    iam.gke.io/gcp-service-account: alloy-gcp@bens-project-462804.iam.gserviceaccount.com
+
+controller:
+  type: deployment
+  replicas: 1
+
+  nodeSelector:
+    cloud.google.com/gke-spot: "true"
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 250m
+      memory: 512Mi
