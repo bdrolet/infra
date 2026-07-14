@@ -67,6 +67,18 @@ resource "cloudflare_record" "observability" {
   ttl     = 60
 }
 
+# Cloud Run domain mapping for inbox-api.drolet.cloud.
+# The mapping requests a single CNAME to ghs.googlehosted.com (subdomain mapping).
+# Must stay DNS-only (proxied = false) so Cloud Run can provision its managed TLS cert.
+resource "cloudflare_record" "inbox_api" {
+  zone_id = cloudflare_zone.drolet_cloud.id
+  name    = "inbox-api"
+  type    = "CNAME"
+  content = "ghs.googlehosted.com"
+  proxied = false
+  ttl     = 60
+}
+
 output "drolet_cloud_nameservers" {
   description = "Cloudflare nameservers to set at GoDaddy for drolet.cloud"
   value       = cloudflare_zone.drolet_cloud.name_servers
