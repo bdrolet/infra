@@ -15,7 +15,10 @@ override.tf.json
 *.json
 
 # K8s secrets (apply manually, don't commit real credentials)
-k8s/**/secret.yaml
+**/secret.yaml
+
+# Claude Code
+.claude/scheduled_tasks.lock
 
 # OS
 .DS_Store
