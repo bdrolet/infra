@@ -67,6 +67,43 @@ resource "cloudflare_record" "observability" {
   ttl     = 60
 }
 
+resource "cloudflare_pages_project" "finances" {
+  account_id        = var.account_id
+  name              = "finances"
+  production_branch = "main"
+
+  build_config {
+    destination_dir = "output"
+  }
+
+  source {
+    type = "github"
+    config {
+      owner                         = var.github_owner
+      repo_name                     = "finances"
+      production_branch             = "main"
+      pr_comments_enabled           = true
+      deployments_enabled           = true
+      production_deployment_enabled = true
+      preview_deployment_setting    = "none"
+    }
+  }
+}
+
+resource "cloudflare_record" "fin" {
+  zone_id = cloudflare_zone.drolet_cloud.id
+  name    = "fin"
+  type    = "CNAME"
+  content = "finances-2b4.pages.dev"
+  proxied = true
+}
+
+resource "cloudflare_pages_domain" "fin" {
+  account_id   = var.account_id
+  project_name = "finances"
+  domain       = "fin.drolet.cloud"
+}
+
 # Cloud Run domain mapping for inbox-api.drolet.cloud.
 # The mapping requests a single CNAME to ghs.googlehosted.com (subdomain mapping).
 # Must stay DNS-only (proxied = false) so Cloud Run can provision its managed TLS cert.
