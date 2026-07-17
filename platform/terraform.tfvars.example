@@ -1,0 +1,7 @@
+project_id = "bens-project-462804"
+
+# Shared secret values — owned by this state, read by inbox + tasks.
+asana_api_key         = "..."
+grafana_otlp_endpoint = "https://otlp-gateway-prod-us-west-0.grafana.net/otlp"
+grafana_otlp_token    = "..."
+webhook_label_token   = "..." # openssl rand -hex 32
