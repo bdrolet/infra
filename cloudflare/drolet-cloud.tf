@@ -116,6 +116,16 @@ resource "cloudflare_record" "inbox_api" {
   ttl     = 60
 }
 
+# Cloud Run domain mapping for tasks-api.drolet.cloud (same shape as inbox-api).
+resource "cloudflare_record" "tasks_api" {
+  zone_id = cloudflare_zone.drolet_cloud.id
+  name    = "tasks-api"
+  type    = "CNAME"
+  content = "ghs.googlehosted.com"
+  proxied = false
+  ttl     = 60
+}
+
 output "drolet_cloud_nameservers" {
   description = "Cloudflare nameservers to set at GoDaddy for drolet.cloud"
   value       = cloudflare_zone.drolet_cloud.name_servers
