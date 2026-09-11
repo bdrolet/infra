@@ -210,6 +210,51 @@ The Gateway rule, the observability description, and the cost notes all
 describe a system that no longer exists. Update them in the same PR that
 changes the cluster, so the document does not drift again.
 
+### D8 — Trim GKE's Cloud Monitoring components
+
+Cloud Monitoring is the second-largest line at $210.65 (20%), and the
+original draft of this spec did not address it at all.
+
+Cloud Monitoring bills on metric samples ingested. GKE's
+`SYSTEM_COMPONENTS` metrics are free; the optional component groups are
+not, and this cluster has effectively all of them enabled:
+
+| Component | Collects | Decision |
+|---|---|---|
+| `SYSTEM_COMPONENTS` | control plane, node health | **keep** — free, powers the console cluster view |
+| `CADVISOR`, `KUBELET` | per-container CPU/memory/disk, every scrape | **cut** — the high-cardinality pair, almost certainly most of the cost |
+| `POD`, `DEPLOYMENT`, `DAEMONSET`, `STATEFULSET`, `HPA`, `STORAGE`, `JOBSET` | kube-state-style object metrics | **cut** — duplicates what Alloy already sends to Grafana Cloud |
+| `DCGM` | NVIDIA GPU metrics | **cut** — there are no GPUs in this cluster; a managed `gke-managed-dcgm-exporter` scrape is running for hardware that does not exist |
+| Managed Prometheus | a second Prometheus, billed per sample | **cut** — the only `ClusterPodMonitoring` resources are Google's own defaults; none are user-defined |
+| Advanced Datapath Observability | eBPF network flow metrics | **cut** — only useful while debugging network policy |
+
+Nothing consumes any of it. The project has **zero Cloud Monitoring
+dashboards and zero alert policies** — the usual risk with this change is
+silently breaking an alert that depends on a cut metric, and there are no
+alerts to break.
+
+```hcl
+monitoring_config {
+  enable_components = ["SYSTEM_COMPONENTS"]
+  managed_prometheus { enabled = false }
+  advanced_datapath_observability_config { enable_metrics = false }
+}
+```
+
+**`loggingConfig` must not be touched.** It currently carries
+`SYSTEM_COMPONENTS` + `WORKLOADS`, and once D1 removes Loki, Cloud Logging
+becomes the only destination for container logs. Cutting both leaves the
+cluster with no logs anywhere. Workload volume here is small enough to sit
+inside the 50 GiB/month free tier.
+
+This interaction is the reason D8 belongs in the spec rather than being
+applied ad hoc: D1 and D8 are each safe alone and jointly remove every
+place logs could land.
+
+The change takes effect immediately, disrupts no pods, and is one field to
+revert. Already-ingested data is retained under its existing retention
+policy; only new ingestion stops.
+
 ## Open questions
 
 - **Q1 — Does anything send OTLP to the in-cluster collector?** If nothing
@@ -232,7 +277,7 @@ changes the cluster, so the document does not drift again.
 
 ## Expected outcome
 
-If D1–D5 land and Q1 resolves toward deletion:
+If D1–D5 and D8 land and Q1 resolves toward deletion:
 
 | | Before | After |
 |---|---|---|
@@ -241,12 +286,26 @@ If D1–D5 land and Q1 resolves toward deletion:
 | PVCs | 90 GiB across 8 disks | ~25 GiB |
 | Artifact Registry | 216 GiB | <10 GiB |
 | Load balancers | 1 orphaned ALB | 0 |
+| Cloud Monitoring components | 11 enabled + GMP + datapath | `SYSTEM_COMPONENTS` only |
 
-Estimated reduction of **$150–200/month** against a run rate forecasting
-$284.77 this month. This is an estimate reasoned from request shares and
-storage sizes rather than a per-SKU bill; the per-SKU report timed out
-during the audit, and a BigQuery billing export would make future estimates
-exact.
+Coverage against the Mar–Sep service mix:
+
+| | Share | Covered by |
+|---|---|---|
+| Kubernetes Engine | 55% | D1, D2, D5 — most of it, since `observability` is 78% of billable CPU |
+| Cloud Monitoring | 20% | D8 |
+| Networking | 6% | D3 |
+| Secret Manager | 6% | Q5 only — no decision yet |
+| Artifact Registry | 5% | D4 |
+| Compute Engine | 3% | Q3 (`ntfy`) — conditional |
+| Cloud SQL, Cloud Run, Vision, Vertex | 4% | retained — the legitimate floor |
+
+Estimated landing point of **$40–70/month** against a run rate forecasting
+$284.77, leaving Secret Manager (Q5) as the only material line not yet
+addressed. These are estimates reasoned from request shares, storage sizes
+and enabled-component counts rather than a per-SKU bill; the per-SKU report
+timed out during the audit, and a BigQuery billing export would make future
+estimates exact.
 
 The residual cost is Cloud SQL, Cloud Run, the Cloud Functions, Grafana
 Cloud egress, and a much smaller Artifact Registry — which is roughly what
@@ -255,6 +314,11 @@ this project should cost.
 ## Ordering
 
 D6 first, alone — it is independent, reversible, and prevents recurrence
-while the rest is in flight. Then D2 (it is a prerequisite for Alloy
+while the rest is in flight. Then D8, which is a single reversible field
+and the largest saving per unit of risk. Then D2 (a prerequisite for Alloy
 surviving D1 correctly), then D1, D4, D3, D5. D7 travels with whichever PR
 changes the thing it documents.
+
+D8 must land with `loggingConfig` left intact, and D1 must not be applied
+until that is confirmed — together they are the one ordering constraint in
+this plan that can leave the cluster worse off.
