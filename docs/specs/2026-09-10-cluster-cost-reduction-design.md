@@ -112,10 +112,14 @@ The documented architecture and the running one have diverged. The rule in
 
 ### Resources outside the cluster
 
-- **`ntfy`** — an `e2-micro` Compute Engine VM (created 2026-06-04,
-  `RUNNING`) with a reserved static IP and a 10 GB `pd-standard` disk. It
-  has no manifest in this repo; only its DNS record exists, in
-  `cloudflare/ntfy.tf`. It accounts for the Compute Engine line.
+- **`ntfy`** — an `e2-micro` Compute Engine VM with a reserved static IP
+  and a 10 GB `pd-standard` disk, accounting for $6.02/month of the
+  Compute Engine line. **This is live production infrastructure and is
+  retained** — see D10. An earlier draft of this spec listed it as an
+  orphan because it has no manifest in this repo. That was a misreading:
+  it is not a Kubernetes workload, and it is owned by *inbox* Terraform
+  (`inbox/terraform/ntfy.tf`), which is exactly why nothing defines it
+  here. The variable comment in `cloudflare/ntfy.tf` says so directly.
 - **Artifact Registry** — 216 GiB across 11 repos, **no cleanup policy on
   any of them**:
 
@@ -184,7 +188,7 @@ Add `cleanup_policies` to every repo in `terraform/main.tf`: keep the most
 recent 3 tagged versions, delete untagged artifacts older than 7 days.
 Applies to `gcf-artifacts` and `inbox` first, where the 216 GiB lives.
 
-### D5 — Remove the superseded inbox path
+### D5 — Remove the superseded inbox path and dormant workloads
 
 Delete `inbox-processor`, its KEDA `ScaledObject`, and KEDA itself. The
 deployment has been dormant since 2026-06-01 and its trigger is erroring;
@@ -208,6 +212,24 @@ same superseded design, and direct inspection confirms neither is in use:
 Dump the 8 MB from Postgres to a file before deleting, as a cheap
 insurance policy against the row counts meaning more than they appear to.
 Redis needs no backup; there is nothing in it.
+
+Two further workloads go with them, both confirmed with the owner on
+2026-09-12:
+
+- **`openclaw`** (250m/512Mi, plus a 5Gi PVC and a 627 MiB Artifact
+  Registry repo) — no longer wanted. It has had no route to it since the
+  Gateway was removed. Delete the Deployment, Service, PVC, `k8s/openclaw/`
+  and the registry repo.
+- **`devbox`** (Deployment 0/0 for 168 days) — the Deployment costs
+  nothing at zero replicas, but `devbox-workspace` (10Gi) stays bound and
+  billed. Delete the PVC; keep `devbox/` and `deploy/` in the repo so the
+  workspace can be recreated on demand, which is how it was meant to be
+  used.
+
+With these, every PVC in the cluster is removed: `openclaw-data` (5Gi),
+`postgres-data` (10Gi), `devbox-workspace` (10Gi), `grafana` (5Gi),
+`prometheus-server` (20Gi), `storage-loki-0` (20Gi) and `storage-tempo-0`
+(10Gi) — 80 GiB, the entire Balanced PD line.
 
 ### D6 — Set a budget and alerts
 
@@ -309,6 +331,32 @@ Secrets are owned by several different Terraform states (see the
 ownership note in the `tasks` repo), so this needs coordinating across
 repos rather than being done here alone.
 
+### D10 — Retain `ntfy`, and stop treating it as unowned
+
+`ntfy` is live production infrastructure, not an orphan. It serves push
+notifications for urgent inbox mail at `ntfy.drolet.ai`, with Let's
+Encrypt TLS and an APNs relay for iOS delivery. The inbox Cloud Functions
+consume it through `NTFY_BASE_URL` / `NTFY_TOPIC` / `NTFY_TOKEN`, and it
+is referenced across `inbox/main.py`, `inbox/clients/ntfy.py`, the inbox
+test suite, four Claude skills, and the `schedule` repo's RSVP-relay
+design.
+
+Critically, its notification **action buttons feed the label handler,
+which publishes to the `inbox-labels` Pub/Sub topic — the source of the
+`label_applied` events the `tasks` service consumes.** Deleting it would
+break urgent-mail notification and a live input path into another
+service.
+
+It is owned by `inbox/terraform/ntfy.tf`. Nothing about it belongs in this
+repo beyond the DNS record already in `cloudflare/ntfy.tf`, so no
+migration is needed — only the correction that its absence from `k8s/` is
+by design.
+
+The general lesson, which cost this spec a wrong recommendation: *"not
+defined in this repo"* is not evidence of *"unowned."* This project spans
+several Terraform states, and a resource's home may be elsewhere. Check
+the other repos before proposing a deletion.
+
 ## Open questions
 
 - **Q1 — Does anything send OTLP to the in-cluster collector?** If nothing
@@ -318,18 +366,18 @@ repos rather than being done here alone.
 - ~~**Q2 — Is in-cluster `postgres` or `redis` still holding live data?**~~
   **Resolved 2026-09-12: no.** Postgres holds 8 MB frozen at 2026-06-01;
   Redis is empty and has never served a read. Folded into D5.
-- **Q3 — Is `ntfy` in use?** It is a running VM with a static IP and a DNS
-  record, but no manifest in this repo. If it is live it should be brought
-  into the repo; if not, delete the VM, disk, IP and DNS record together.
-- **Q4 — Is `openclaw` still wanted?** 250m/512Mi plus a 5Gi PVC, exposed
-  only on a ClusterIP with no route to it since the Gateway was removed.
+- ~~**Q3 — Is `ntfy` in use?**~~ **Resolved 2026-09-12: yes — retained.**
+  See D10.
+- ~~**Q4 — Is `openclaw` still wanted?**~~ **Resolved 2026-09-12: no.**
+  Removed per owner decision; folded into D5.
 - ~~**Q5 — Why is Secret Manager $65.70?**~~ **Resolved 2026-09-12:**
   replica storage under automatic replication, not access operations.
   Promoted to D9.
 
 ## Expected outcome
 
-If D1–D5 and D8 land and Q1 resolves toward deletion:
+If D1–D5, D8 and D9 land and Q1 — now the only open question — resolves
+toward deletion:
 
 | | Before | After |
 |---|---|---|
@@ -346,28 +394,30 @@ BigQuery billing export
 
 | Service | Now | After | Saves | Covered by |
 |---|---|---|---|---|
-| Kubernetes Engine | $148.12 | ~$25 | ~$123 | D1, D2, D5 |
+| Kubernetes Engine | $148.12 | ~$16 | ~$132 | D1, D2, D5 |
 | Cloud Monitoring | $43.71 | ~$1 | ~$43 | D8 |
 | Artifact Registry | $20.05 | ~$1 | ~$19 | D4 |
 | Networking | $17.95 | ~$0 | ~$18 | D3 |
-| Compute Engine | $13.83 | ~$2 | ~$12 | D1 (PVCs), Q3 (`ntfy`) |
+| Compute Engine | $13.83 | ~$6.5 | ~$7 | D5 (all PVCs); `ntfy` retained per D10 |
 | Secret Manager | $10.37 | ~$3 | ~$7 | D9 |
 | Cloud Run | $9.84 | $9.84 | — | retained |
 | Cloud SQL | $9.19 | $9.19 | — | retained |
 | Cloud Vision API | $5.05 | $5.05 | — | retained |
-| **Total** | **$278.11** | **~$56** | **~$222** | |
+| **Total** | **$278.11** | **~$52** | **~$226** | |
 
-Call it a reduction of **$200–225/month, landing at $55–75/month** — near
-the $64/month flat line this was originally budgeted at.
+Call it a reduction of **$200–230/month, landing at $50–70/month** — at or
+below the $64/month flat line this was originally budgeted at.
+
+What remains is `ntfy`, Cloud SQL, Cloud Run, Cloud Vision, a nearly-empty
+Artifact Registry, and a cluster running only Alloy and the blog.
 
 Every line above is a measured SKU total except the Kubernetes Engine
 projection, which is apportioned by request share across the on-demand and
 spot SKUs rather than read per-pod. Autopilot user-workload requests fall
-from 5.54 vCPU to roughly 0.5 vCPU once D1, D5 and D8 land, a ~91%
-reduction; the GKE figure assumes cost tracks that, which it will not do
-exactly, since spot and on-demand pods are removed in different
-proportions. Treat ~$123 as a central estimate with a band of roughly
-$95–140.
+from 5.54 vCPU to roughly 0.26 vCPU once D1, D5 and D8 land — a ~95%
+reduction — but cost will not track that exactly, since spot and on-demand
+pods are removed in different proportions and some floor remains. Treat
+~$132 as a central estimate with a band of roughly $100–145.
 
 The residual cost is Cloud SQL, Cloud Run, the Cloud Functions, Grafana
 Cloud egress, and a much smaller Artifact Registry — which is roughly what
