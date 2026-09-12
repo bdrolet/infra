@@ -190,8 +190,24 @@ Delete `inbox-processor`, its KEDA `ScaledObject`, and KEDA itself. The
 deployment has been dormant since 2026-06-01 and its trigger is erroring;
 the work it did now runs in Cloud Functions against Cloud SQL.
 
-In-cluster `postgres` and `redis` are part of the same superseded design and
-are the next candidates, but must not be deleted until Q2 is answered.
+Delete in-cluster `postgres` and `redis` with it. Both were part of the
+same superseded design, and direct inspection confirms neither is in use:
+
+- **Postgres** holds two databases totalling 8 MB. The `app` database has
+  23 rows in `messages` and 17 in `senders`; `classifications`, `tags` and
+  `message_embeddings` are empty and were never populated. The newest row
+  in either table is **2026-06-01 17:11 UTC** — the same day
+  `inbox-processor` last scaled. Nothing has written since. There are no
+  client connections.
+- **Redis** is empty: `DBSIZE` is 0, `INFO keyspace` lists no databases,
+  and `keyspace_hits` and `keyspace_misses` are both **0** — it has never
+  served a read. Its 4,479 processed commands against 4,480 connections
+  are one-per-connection health-check pings. It has run for 168 days
+  without storing a key.
+
+Dump the 8 MB from Postgres to a file before deleting, as a cheap
+insurance policy against the row counts meaning more than they appear to.
+Redis needs no backup; there is nothing in it.
 
 ### D6 — Set a budget and alerts
 
@@ -212,12 +228,31 @@ changes the cluster, so the document does not drift again.
 
 ### D8 — Trim GKE's Cloud Monitoring components
 
-Cloud Monitoring is the second-largest line at $210.65 (20%), and the
-original draft of this spec did not address it at all.
+Cloud Monitoring is the second-largest line, and the original draft of this
+spec did not address it at all.
 
-Cloud Monitoring bills on metric samples ingested. GKE's
-`SYSTEM_COMPONENTS` metrics are free; the optional component groups are
-not, and this cluster has effectively all of them enabled:
+**The lever is Managed Prometheus, not the component list.** Per-SKU data
+from the BigQuery billing export (last 30 days) splits the $43.71 as:
+
+| SKU | Net |
+|---|---|
+| Prometheus Samples Ingested | **$41.33** |
+| Time series billed count | $2.38 |
+
+So `managed_prometheus { enabled = false }` is worth ~$41/month and
+trimming `enable_components` is worth ~$2. An earlier draft of this
+decision had that backwards. Someone executing it by trimming components
+alone would see almost no change and reasonably conclude the analysis was
+wrong — hence stating it explicitly.
+
+Managed Prometheus has no user-defined scrape configs; its only
+`ClusterPodMonitoring` resources are Google's own defaults, one of which
+is a GPU exporter on a cluster with no GPUs.
+
+Trim the component list as well — it is the same config block, costs
+nothing to do, and removes metrics nothing reads. GKE's
+`SYSTEM_COMPONENTS` metrics are free; the optional groups are not, and
+this cluster has effectively all of them enabled:
 
 | Component | Collects | Decision |
 |---|---|---|
@@ -255,25 +290,42 @@ The change takes effect immediately, disrupts no pods, and is one field to
 revert. Already-ingested data is retained under its existing retention
 policy; only new ingestion stops.
 
+### D9 — Narrow Secret Manager replication
+
+Secret Manager is $10.37/month, and the per-SKU export identifies all of it
+as **`Secret version replica storage`** — not access operations, as an
+earlier draft of this spec assumed. Roughly 40 secret versions replicated
+across regions under automatic replication account for the charge.
+
+Move secrets to user-managed replication pinned to `us-central1`, and prune
+superseded versions (several secrets carry 2–5 enabled versions where one
+is current). Worth roughly $7/month.
+
+Replication policy is fixed at creation time and cannot be changed in
+place, so each secret must be recreated. Sequence this after the rest —
+it touches live credentials for running services and carries more
+operational risk than anything else in this plan for the least money.
+Secrets are owned by several different Terraform states (see the
+ownership note in the `tasks` repo), so this needs coordinating across
+repos rather than being done here alone.
+
 ## Open questions
 
 - **Q1 — Does anything send OTLP to the in-cluster collector?** If nothing
   does, the `otel-collector` DaemonSet and `cluster-collector` go with D1.
   Resolve by checking the collector's `otelcol_receiver_accepted_*` counters
   before deletion.
-- **Q2 — Is in-cluster `postgres` (pgvector, 10Gi) or `redis` still holding
-  live data?** `~/src/inbox/clients/db.py` still *defaults* to
-  `postgres.apps.svc.cluster.local`, though deployed callers override
-  `POSTGRES_HOST`. Dump and verify before deleting either.
+- ~~**Q2 — Is in-cluster `postgres` or `redis` still holding live data?**~~
+  **Resolved 2026-09-12: no.** Postgres holds 8 MB frozen at 2026-06-01;
+  Redis is empty and has never served a read. Folded into D5.
 - **Q3 — Is `ntfy` in use?** It is a running VM with a static IP and a DNS
   record, but no manifest in this repo. If it is live it should be brought
   into the repo; if not, delete the VM, disk, IP and DNS record together.
 - **Q4 — Is `openclaw` still wanted?** 250m/512Mi plus a 5Gi PVC, exposed
   only on a ClusterIP with no route to it since the Gateway was removed.
-- **Q5 — Why is Secret Manager $65.70?** ~40 secret versions account for
-  roughly $2.40/month; the rest is access operations, implying something
-  reads secrets far more often than cold starts would explain. Worth its own
-  investigation.
+- ~~**Q5 — Why is Secret Manager $65.70?**~~ **Resolved 2026-09-12:**
+  replica storage under automatic replication, not access operations.
+  Promoted to D9.
 
 ## Expected outcome
 
@@ -288,24 +340,34 @@ If D1–D5 and D8 land and Q1 resolves toward deletion:
 | Load balancers | 1 orphaned ALB | 0 |
 | Cloud Monitoring components | 11 enabled + GMP + datapath | `SYSTEM_COMPONENTS` only |
 
-Coverage against the Mar–Sep service mix:
+Measured against the last 30 days of actual per-SKU spend, from the
+BigQuery billing export
+(`billing_export.gcp_billing_export_v1_*`, which covers 2026-04-01 onward):
 
-| | Share | Covered by |
-|---|---|---|
-| Kubernetes Engine | 55% | D1, D2, D5 — most of it, since `observability` is 78% of billable CPU |
-| Cloud Monitoring | 20% | D8 |
-| Networking | 6% | D3 |
-| Secret Manager | 6% | Q5 only — no decision yet |
-| Artifact Registry | 5% | D4 |
-| Compute Engine | 3% | Q3 (`ntfy`) — conditional |
-| Cloud SQL, Cloud Run, Vision, Vertex | 4% | retained — the legitimate floor |
+| Service | Now | After | Saves | Covered by |
+|---|---|---|---|---|
+| Kubernetes Engine | $148.12 | ~$25 | ~$123 | D1, D2, D5 |
+| Cloud Monitoring | $43.71 | ~$1 | ~$43 | D8 |
+| Artifact Registry | $20.05 | ~$1 | ~$19 | D4 |
+| Networking | $17.95 | ~$0 | ~$18 | D3 |
+| Compute Engine | $13.83 | ~$2 | ~$12 | D1 (PVCs), Q3 (`ntfy`) |
+| Secret Manager | $10.37 | ~$3 | ~$7 | D9 |
+| Cloud Run | $9.84 | $9.84 | — | retained |
+| Cloud SQL | $9.19 | $9.19 | — | retained |
+| Cloud Vision API | $5.05 | $5.05 | — | retained |
+| **Total** | **$278.11** | **~$56** | **~$222** | |
 
-Estimated landing point of **$40–70/month** against a run rate forecasting
-$284.77, leaving Secret Manager (Q5) as the only material line not yet
-addressed. These are estimates reasoned from request shares, storage sizes
-and enabled-component counts rather than a per-SKU bill; the per-SKU report
-timed out during the audit, and a BigQuery billing export would make future
-estimates exact.
+Call it a reduction of **$200–225/month, landing at $55–75/month** — near
+the $64/month flat line this was originally budgeted at.
+
+Every line above is a measured SKU total except the Kubernetes Engine
+projection, which is apportioned by request share across the on-demand and
+spot SKUs rather than read per-pod. Autopilot user-workload requests fall
+from 5.54 vCPU to roughly 0.5 vCPU once D1, D5 and D8 land, a ~91%
+reduction; the GKE figure assumes cost tracks that, which it will not do
+exactly, since spot and on-demand pods are removed in different
+proportions. Treat ~$123 as a central estimate with a band of roughly
+$95–140.
 
 The residual cost is Cloud SQL, Cloud Run, the Cloud Functions, Grafana
 Cloud egress, and a much smaller Artifact Registry — which is roughly what
@@ -319,6 +381,32 @@ and the largest saving per unit of risk. Then D2 (a prerequisite for Alloy
 surviving D1 correctly), then D1, D4, D3, D5. D7 travels with whichever PR
 changes the thing it documents.
 
+D9 last, and separately — it is the smallest saving, it touches live
+credentials, and it spans several Terraform states.
+
 D8 must land with `loggingConfig` left intact, and D1 must not be applied
 until that is confirmed — together they are the one ordering constraint in
 this plan that can leave the cluster worse off.
+
+## Measuring the result
+
+A BigQuery billing export already exists —
+`bens-project-462804.billing_export.gcp_billing_export_v1_*`, covering
+2026-04-01 onward, and already queried by the `billing-exporter` CronJob.
+It carries full SKU detail, so the effect of each decision can be measured
+directly rather than estimated:
+
+```sql
+SELECT service.description, sku.description,
+       ROUND(SUM(cost) + SUM(IFNULL((SELECT SUM(c.amount)
+              FROM UNNEST(credits) c), 0)), 2) AS net
+FROM `bens-project-462804.billing_export.gcp_billing_export_v1_*`
+WHERE DATE(usage_start_time)
+      BETWEEN DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)
+          AND DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY)
+GROUP BY 1, 2 ORDER BY net DESC
+```
+
+Export rows lag actual usage by up to a day, so leave a day's gap before
+reading a change's effect. Re-run this after each decision lands and
+compare against the table above.
