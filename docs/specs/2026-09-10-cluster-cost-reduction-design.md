@@ -158,9 +158,26 @@ a working one is the single largest avoidable cost in the project.
 **Retain:** Grafana Alloy and the `billing-exporter` CronJob — both write to
 Grafana Cloud and are independent of the LGTM stack.
 
-**Open:** the `otel-collector` DaemonSet (3 pods, 0.30 vCPU / 0.75 GiB) only
-exports to Loki and Tempo. If nothing sends to it, it goes with them; see
-Q1.
+**The `otel-collector` DaemonSet and `cluster-collector` go with it**
+(4 pods, ~0.35 vCPU / 0.88 GiB). Nothing sends to them:
+
+- No service targets them. `inbox`, `tasks`, `schedule` and
+  `billing-exporter` all export to Grafana Cloud via
+  `GRAFANA_OTLP_ENDPOINT`. There is not one reference to
+  `otel-collector.observability.svc.cluster.local`, or to `localhost:4317`
+  / `4318`, in any repo.
+- No Kubernetes manifest sets an OTLP endpoint at all.
+- The collector's three pipelines export exclusively into the stack this
+  decision deletes — traces to Tempo, metrics to Prometheus, logs to Loki.
+  Every destination disappears regardless.
+- Tempo holds zero traces, corroborating the above from the other end.
+
+`CLAUDE.md` describes a design in which apps instrument via the OTel SDK,
+the DaemonSet receives OTLP on `localhost:4317`, and forwards to
+self-hosted LGTM. **That wiring was never done.** Every service went
+directly to Grafana Cloud instead, and the collector has run on every node
+since receiving nothing — infrastructure built for an integration that
+never happened, which is the same pattern as the rest of this namespace.
 
 ### D2 — Fix the resource-request nesting before anything else is redeployed
 
@@ -359,10 +376,11 @@ the other repos before proposing a deletion.
 
 ## Open questions
 
-- **Q1 — Does anything send OTLP to the in-cluster collector?** If nothing
-  does, the `otel-collector` DaemonSet and `cluster-collector` go with D1.
-  Resolve by checking the collector's `otelcol_receiver_accepted_*` counters
-  before deletion.
+**All resolved as of 2026-09-12.** Kept for the record.
+
+- ~~**Q1 — Does anything send OTLP to the in-cluster collector?**~~
+  **Resolved 2026-09-12: no.** Every service exports to Grafana Cloud; no
+  repo or manifest references the collector. Folded into D1.
 - ~~**Q2 — Is in-cluster `postgres` or `redis` still holding live data?**~~
   **Resolved 2026-09-12: no.** Postgres holds 8 MB frozen at 2026-06-01;
   Redis is empty and has never served a read. Folded into D5.
@@ -376,8 +394,7 @@ the other repos before proposing a deletion.
 
 ## Expected outcome
 
-If D1–D5, D8 and D9 land and Q1 — now the only open question — resolves
-toward deletion:
+With every open question resolved, if D1–D5, D8 and D9 land:
 
 | | Before | After |
 |---|---|---|
@@ -394,7 +411,7 @@ BigQuery billing export
 
 | Service | Now | After | Saves | Covered by |
 |---|---|---|---|---|
-| Kubernetes Engine | $148.12 | ~$16 | ~$132 | D1, D2, D5 |
+| Kubernetes Engine | $148.12 | ~$10 | ~$138 | D1, D2, D5 |
 | Cloud Monitoring | $43.71 | ~$1 | ~$43 | D8 |
 | Artifact Registry | $20.05 | ~$1 | ~$19 | D4 |
 | Networking | $17.95 | ~$0 | ~$18 | D3 |
@@ -403,10 +420,10 @@ BigQuery billing export
 | Cloud Run | $9.84 | $9.84 | — | retained |
 | Cloud SQL | $9.19 | $9.19 | — | retained |
 | Cloud Vision API | $5.05 | $5.05 | — | retained |
-| **Total** | **$278.11** | **~$52** | **~$226** | |
+| **Total** | **$278.11** | **~$46** | **~$232** | |
 
-Call it a reduction of **$200–230/month, landing at $50–70/month** — at or
-below the $64/month flat line this was originally budgeted at.
+Call it a reduction of **$215–245/month, landing at $35–60/month** —
+comfortably below the $64/month flat line this was originally budgeted at.
 
 What remains is `ntfy`, Cloud SQL, Cloud Run, Cloud Vision, a nearly-empty
 Artifact Registry, and a cluster running only Alloy and the blog.
@@ -414,10 +431,11 @@ Artifact Registry, and a cluster running only Alloy and the blog.
 Every line above is a measured SKU total except the Kubernetes Engine
 projection, which is apportioned by request share across the on-demand and
 spot SKUs rather than read per-pod. Autopilot user-workload requests fall
-from 5.54 vCPU to roughly 0.26 vCPU once D1, D5 and D8 land — a ~95%
-reduction — but cost will not track that exactly, since spot and on-demand
-pods are removed in different proportions and some floor remains. Treat
-~$132 as a central estimate with a band of roughly $100–145.
+from 5.54 vCPU to roughly 0.15 vCPU once D1, D5 and D8 land — a ~97%
+reduction — but cost will not track that exactly: spot and on-demand pods
+are removed in different proportions, and a floor remains from
+Google-managed components and ephemeral storage. Treat ~$138 as a central
+estimate with a band of roughly $105–150.
 
 The residual cost is Cloud SQL, Cloud Run, the Cloud Functions, Grafana
 Cloud egress, and a much smaller Artifact Registry — which is roughly what
