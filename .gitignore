@@ -19,6 +19,7 @@ override.tf.json
 
 # Claude Code
 .claude/scheduled_tasks.lock
+.claude/worktrees/
 
 # OS
 .DS_Store

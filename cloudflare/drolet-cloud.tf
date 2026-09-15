@@ -49,23 +49,62 @@ resource "cloudflare_record" "drolet_cloud_google_verify" {
   content = "google-site-verification=u--cgn4dU1qJBQSpAJFEhX5RMqJWPjWInjgqDU4vVlw"
 }
 
+# The blog is a static Astro site on Cloudflare Pages, deployed on push to
+# main in bdrolet/blog. It used to run as a pod behind a standalone GKE
+# Ingress, which had its own GCP load balancer (~$18/month) — see D3 in
+# docs/specs/2026-09-10-cluster-cost-reduction-design.md.
+resource "cloudflare_pages_project" "blog" {
+  account_id        = var.account_id
+  name              = "blog"
+  production_branch = "main"
+
+  build_config {
+    build_command   = "npm run build"
+    destination_dir = "dist"
+  }
+
+  deployment_configs {
+    production {
+      # Astro 6 needs Node >= 22.12; the Pages build image default is older.
+      environment_variables = {
+        NODE_VERSION = "22.12.0"
+      }
+    }
+  }
+
+  source {
+    type = "github"
+    config {
+      owner                         = var.github_owner
+      repo_name                     = "blog"
+      production_branch             = "main"
+      pr_comments_enabled           = true
+      deployments_enabled           = true
+      production_deployment_enabled = true
+      preview_deployment_setting    = "none"
+    }
+  }
+}
+
 resource "cloudflare_record" "blog" {
   zone_id = cloudflare_zone.drolet_cloud.id
   name    = "blog"
-  type    = "A"
-  content = "8.233.60.2"
-  proxied = false
-  ttl     = 60
+  type    = "CNAME"
+  content = cloudflare_pages_project.blog.subdomain
+  proxied = true
+
+  depends_on = [cloudflare_pages_project.blog]
 }
 
-resource "cloudflare_record" "observability" {
-  zone_id = cloudflare_zone.drolet_cloud.id
-  name    = "observability"
-  type    = "A"
-  content = "8.233.220.63"
-  proxied = false
-  ttl     = 60
+resource "cloudflare_pages_domain" "blog" {
+  account_id   = var.account_id
+  project_name = cloudflare_pages_project.blog.name
+  domain       = "blog.drolet.cloud"
 }
+
+# observability.drolet.cloud is deliberately absent: D1 deletes the
+# self-hosted Grafana it pointed at, and the A record had already been
+# dangling at an IP that exists nowhere in the project.
 
 resource "cloudflare_pages_project" "finances" {
   account_id        = var.account_id
