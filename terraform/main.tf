@@ -18,15 +18,6 @@ resource "google_project_service" "artifactregistry" {
   disable_on_destroy = false
 }
 
-resource "google_artifact_registry_repository" "openclaw" {
-  repository_id = "openclaw"
-  format        = "DOCKER"
-  location      = var.region
-  description   = "OpenClaw gateway image"
-
-  depends_on = [google_project_service.artifactregistry]
-}
-
 resource "google_artifact_registry_repository" "blog" {
   repository_id = "blog"
   format        = "DOCKER"

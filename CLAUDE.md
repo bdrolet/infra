@@ -18,10 +18,6 @@ terraform/          GKE cluster + Artifact Registry (GCP)
 cloudflare/         DNS, Cloudflare Pages projects
 k8s/                Kubernetes manifests, one directory per workload
   infra/            Shared Gateway manifests — NOT applied; see the networking section
-  inbox/            Inbox worker + KEDA ScaledObject
-  openclaw/         OpenClaw gateway
-  postgres/         Shared Postgres 16 (namespace: apps)
-  redis/            Redis (namespace: apps)
   billing-exporter/ CronJob: GCP billing (BigQuery) → OTLP metrics to Grafana Cloud
 billing-exporter/   Python source + Dockerfile for the billing-exporter image
 observability/      Self-hosted LGTM stack + OTel Collector; Grafana Alloy (GCP infra metrics → Grafana Cloud)
@@ -32,7 +28,7 @@ devbox/             Long-running workspace pod for experiments
 
 | Namespace | What lives there |
 |-----------|-----------------|
-| `apps` | All application workloads (inbox, openclaw, postgres, redis, billing-exporter) |
+| `apps` | Application workloads (billing-exporter) |
 | `infra` | Not created. `k8s/infra/` is unapplied — applying it creates a load balancer |
 | `observability` | Self-hosted LGTM stack, OTel Collector, Grafana Alloy |
 | `devbox` | Devbox workspace pod |
@@ -66,7 +62,6 @@ State is stored locally (`terraform.tfstate`). Do not commit tfstate or `terrafo
 Apply whole workload directories:
 
 ```bash
-kubectl apply -f k8s/inbox/
 kubectl apply -f k8s/billing-exporter/
 ```
 
@@ -157,10 +152,6 @@ spec:
 
 ## Shared infrastructure
 
-**Postgres** (`postgres.apps.svc.cluster.local:5432`): shared Postgres 16, namespace `apps`. Credentials in `postgres-credentials` k8s Secret. Do not create separate database instances for new workloads — add a new database to the existing instance instead.
-
-**Redis** (`redis.apps.svc.cluster.local:6379`): shared Redis, namespace `apps`.
-
 **Artifact Registry**: Docker repos at `us-central1-docker.pkg.dev/bens-project-462804/<repo-name>/`. Each workload has its own repo. Add new repos via `terraform/main.tf`.
 
 ## Observability
@@ -209,21 +200,10 @@ save by touching it. Any change to this resource should be checked with
 `terraform show -json <plan>` for a `logging_config` diff before applying, since
 introducing one block can make the provider want to manage its neighbour.
 
-## KEDA
-
-KEDA is installed for event-driven autoscaling. The inbox worker uses it to scale from 0 to 1 based on Pub/Sub queue depth. Install via Helm if not already present:
-
-```bash
-helm repo add kedacore https://kedacore.github.io/charts
-helm repo update
-helm install keda kedacore/keda --namespace keda --create-namespace
-```
-
 ## Cost notes
 
 - GKE Autopilot: free cluster management fee (covered by $74.40/month credit); pods billed per-second on resource requests
 - GCP Global ALB: none deployed. One costs ~$18/month for its forwarding rule — see the networking section before creating one
-- Postgres pod (250m CPU, 512Mi, always-on): ~$10/month
 - Cloud Monitoring: GKE metric component groups billed ~$42/month as Prometheus samples until D8 trimmed them to `SYSTEM_COMPONENTS` — see the observability section before enabling any of them again
 - Scale pods to 0 when not in use; destroy with `terraform destroy` when done entirely
 
