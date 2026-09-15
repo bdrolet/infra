@@ -122,6 +122,17 @@ spec:
 - Namespace: `apps` for all application workloads
 - One subdirectory per workload under `k8s/`
 - Resources: always set both `requests` and `limits` (Autopilot bills on requests)
+- Helm charts: after every install or upgrade, verify the requests actually landed:
+
+  ```bash
+  kubectl get pod -n <ns> -l app.kubernetes.io/name=<chart> \
+    -o jsonpath='{range .items[*].spec.containers[*]}{.name}{"\t"}{.resources.requests}{"\n"}{end}'
+  ```
+
+  A `resources:` block under the wrong key is silently ignored — the values file
+  looks correct and Autopilot applies its 500m/2Gi default instead. Check the key
+  against `helm show values <repo>/<chart>` before editing, and confirm against the
+  running pod afterwards. The values file is not evidence.
 - Images: `us-central1-docker.pkg.dev/bens-project-462804/<repo>/<image>:latest`
 - Service accounts: annotate with `iam.gke.io/gcp-service-account` for Workload Identity
 
