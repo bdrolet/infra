@@ -191,3 +191,12 @@ helm install keda kedacore/keda --namespace keda --create-namespace
 - GCP Global ALB: none deployed. One costs ~$18/month for its forwarding rule — see the networking section before creating one
 - Postgres pod (250m CPU, 512Mi, always-on): ~$10/month
 - Scale pods to 0 when not in use; destroy with `terraform destroy` when done entirely
+
+A **monthly billing budget of $75** is managed in `terraform/main.tf`
+(`google_billing_budget.project`), scoped to this project. Alerts fire at 50%,
+90% and 100% of actual spend plus 100% of forecast, and go to the billing
+account's default IAM recipients. Change the amount via `monthly_budget_usd`.
+
+```bash
+gcloud billing budgets list --billing-account=$(gcloud billing projects describe bens-project-462804 --format='value(billingAccountName)' | cut -d/ -f2)
+```

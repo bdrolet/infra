@@ -122,3 +122,71 @@ resource "google_service_account_iam_member" "billing_exporter_workload_identity
   role               = "roles/iam.workloadIdentityUser"
   member             = "serviceAccount:${var.project_id}.svc.id.goog[apps/billing-exporter]"
 }
+
+# --- Billing budget (D6) ---
+
+# The Billing Budgets API bills the request to a quota project, which the
+# default provider does not send. Without user_project_override the call is
+# attributed to gcloud's own client project and fails with SERVICE_DISABLED.
+provider "google" {
+  alias                 = "billing"
+  project               = var.project_id
+  region                = var.region
+  billing_project       = var.project_id
+  user_project_override = true
+}
+
+resource "google_project_service" "billingbudgets" {
+  service            = "billingbudgets.googleapis.com"
+  disable_on_destroy = false
+}
+
+data "google_project" "this" {
+  project_id = var.project_id
+}
+
+# Alerts go to the billing account's default IAM recipients — billing account
+# admins and users with the Billing Account Costs Manager role. That is the
+# behaviour when no all_updates_rule is set, so no notification channel or
+# Pub/Sub topic is needed.
+resource "google_billing_budget" "project" {
+  provider = google.billing
+
+  billing_account = var.billing_account_id
+  display_name    = "${var.project_id} monthly budget"
+
+  budget_filter {
+    projects               = ["projects/${data.google_project.this.number}"]
+    calendar_period        = "MONTH"
+    credit_types_treatment = "INCLUDE_ALL_CREDITS"
+  }
+
+  amount {
+    specified_amount {
+      currency_code = "USD"
+      units         = tostring(var.monthly_budget_usd)
+    }
+  }
+
+  threshold_rules {
+    threshold_percent = 0.5
+    spend_basis       = "CURRENT_SPEND"
+  }
+
+  threshold_rules {
+    threshold_percent = 0.9
+    spend_basis       = "CURRENT_SPEND"
+  }
+
+  threshold_rules {
+    threshold_percent = 1.0
+    spend_basis       = "CURRENT_SPEND"
+  }
+
+  threshold_rules {
+    threshold_percent = 1.0
+    spend_basis       = "FORECASTED_SPEND"
+  }
+
+  depends_on = [google_project_service.billingbudgets]
+}

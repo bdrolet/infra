@@ -1,3 +1,5 @@
-project_id   = "bens-project-462804"
-region       = "us-central1"
-cluster_name = "bens-k8s"
+project_id         = "bens-project-462804"
+region             = "us-central1"
+cluster_name       = "bens-k8s"
+billing_account_id = "0X0X0X-XXXXXX-XXXXXX" # required; gcloud billing projects describe <project> --format='value(billingAccountName)'
+monthly_budget_usd = 75
