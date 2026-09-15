@@ -16,10 +16,13 @@ variable "cluster_name" {
   default     = "bens-k8s"
 }
 
+# No default: this repo is public, and the billing account ID is a stable,
+# unrotatable identifier. Set it in terraform.tfvars (gitignored). Recover it
+# with:
+#   gcloud billing projects describe <project> --format='value(billingAccountName)'
 variable "billing_account_id" {
-  description = "GCP billing account the project bills to"
+  description = "GCP billing account the project bills to, e.g. 0X0X0X-XXXXXX-XXXXXX"
   type        = string
-  default     = "011161-84DB9A-69D458"
 }
 
 variable "monthly_budget_usd" {
