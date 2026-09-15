@@ -26,6 +26,15 @@ alloy:
           name: grafana-cloud-prometheus
           key: password
 
+  # -- chart key is alloy.resources; controller.resources does not exist
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 250m
+      memory: 512Mi
+
 serviceAccount:
   create: true
   name: alloy
@@ -38,11 +47,3 @@ controller:
 
   nodeSelector:
     cloud.google.com/gke-spot: "true"
-
-  resources:
-    requests:
-      cpu: 100m
-      memory: 256Mi
-    limits:
-      cpu: 250m
-      memory: 512Mi
