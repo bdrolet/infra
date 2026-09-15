@@ -59,6 +59,24 @@ resource "google_container_cluster" "autopilot" {
 
   ip_allocation_policy {}
 
+  # Cloud Monitoring (D8) — see the observability section of CLAUDE.md. The
+  # optional metric component groups billed ~$42/month as Prometheus samples
+  # (cAdvisor's container_network_* counters alone were 92.7%) and nothing read
+  # them; SYSTEM_COMPONENTS is free and stays.
+  #
+  # Two fields Autopilot will not let this cluster set — do not add them back:
+  # managed_prometheus { enabled = false } is rejected with HTTP 400, and
+  # advanced_datapath_observability_config { enable_metrics = false } is
+  # accepted then ignored, so declaring it leaves a permanent plan diff.
+  # Neither costs anything.
+  monitoring_config {
+    enable_components = ["SYSTEM_COMPONENTS"]
+  }
+
+  # Deliberately no logging_config: SYSTEM_COMPONENTS + WORKLOADS logging must
+  # stay as-is. Cloud Logging is the only destination for container logs, so
+  # trimming it the way monitoring was trimmed above leaves logs nowhere.
+
   depends_on = [
     google_project_service.compute,
     google_project_service.container,

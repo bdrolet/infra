@@ -175,6 +175,40 @@ Two destinations, split by signal source:
 
 > GKE Autopilot blocks `hostPath` and `hostNetwork` — stdout log tailing is not available. All app signals must flow through the OTel SDK.
 
+### What GKE itself sends (`monitoring_config` in `terraform/main.tf`)
+
+**Metrics: `SYSTEM_COMPONENTS` only.** `CADVISOR`, `KUBELET`, `POD`,
+`DEPLOYMENT`, `DAEMONSET`, `STATEFULSET`, `HPA`, `STORAGE` and `DCGM` are all
+off. Those groups bill through the `prometheus.googleapis.com` metric domain as
+"Prometheus Samples Ingested" — ~700M samples/month, ~$42, of which cAdvisor's
+per-interface `container_network_*` counters alone were 92.7%. Nothing read
+them: Alloy already sends the equivalent to Grafana Cloud, and the project has
+no Cloud Monitoring dashboards or alert policies. `SYSTEM_COMPONENTS` is free
+and powers the console cluster view, so it stays.
+
+To re-check the split before changing anything here, group
+`monitoring.googleapis.com/billing/samples_ingested` by `metric_type` — it
+attributes cost per metric, which the billing export cannot.
+
+**Managed Prometheus is on and cannot be turned off.** Autopilot rejects
+`managed_prometheus { enabled = false }` with HTTP 400. That is fine: it is the
+billing *channel* for the components above, not a second Prometheus. With the
+components off, its `gke-managed-kube-state-metrics` scrape target no longer
+exists, so the `gke-gmp-system` collectors keep running and ingest nothing.
+Likewise `advanced_datapath_observability_config { enable_metrics = false }` is
+accepted and silently ignored, so it is deliberately not declared — declaring
+it produces a permanent plan diff.
+
+**Do not touch `logging_config`.** The cluster logs `SYSTEM_COMPONENTS` +
+`WORKLOADS` to Cloud Logging, and there is no `logging_config` block in
+Terraform holding that in place — it is the API default. Cloud Logging is the
+**only** destination for container logs: nothing ships app logs anywhere else.
+Trimming it the way monitoring was trimmed leaves the cluster with logs
+nowhere. Volume sits inside the 50 GiB/month free tier, so there is nothing to
+save by touching it. Any change to this resource should be checked with
+`terraform show -json <plan>` for a `logging_config` diff before applying, since
+introducing one block can make the provider want to manage its neighbour.
+
 ## KEDA
 
 KEDA is installed for event-driven autoscaling. The inbox worker uses it to scale from 0 to 1 based on Pub/Sub queue depth. Install via Helm if not already present:
@@ -190,6 +224,7 @@ helm install keda kedacore/keda --namespace keda --create-namespace
 - GKE Autopilot: free cluster management fee (covered by $74.40/month credit); pods billed per-second on resource requests
 - GCP Global ALB: none deployed. One costs ~$18/month for its forwarding rule — see the networking section before creating one
 - Postgres pod (250m CPU, 512Mi, always-on): ~$10/month
+- Cloud Monitoring: GKE metric component groups billed ~$42/month as Prometheus samples until D8 trimmed them to `SYSTEM_COMPONENTS` — see the observability section before enabling any of them again
 - Scale pods to 0 when not in use; destroy with `terraform destroy` when done entirely
 
 A **monthly billing budget of $75** is managed in `terraform/main.tf`
