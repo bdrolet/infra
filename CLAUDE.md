@@ -17,9 +17,8 @@ Personal infrastructure repo. Manages a GKE Autopilot cluster and supporting GCP
 terraform/          GKE cluster + Artifact Registry (GCP)
 cloudflare/         DNS, Cloudflare Pages projects
 k8s/                Kubernetes manifests, one directory per workload
-  infra/            Shared Gateway (owns the GCP load balancer — do not add more)
+  infra/            Shared Gateway manifests — NOT applied; see the networking section
   inbox/            Inbox worker + KEDA ScaledObject
-  blog/             Astro blog
   openclaw/         OpenClaw gateway
   postgres/         Shared Postgres 16 (namespace: apps)
   redis/            Redis (namespace: apps)
@@ -33,8 +32,8 @@ devbox/             Long-running workspace pod for experiments
 
 | Namespace | What lives there |
 |-----------|-----------------|
-| `apps` | All application workloads (inbox, blog, openclaw, postgres, redis, billing-exporter) |
-| `infra` | Shared Gateway, ReferenceGrant |
+| `apps` | All application workloads (inbox, openclaw, postgres, redis, billing-exporter) |
+| `infra` | Not created. `k8s/infra/` is unapplied — applying it creates a load balancer |
 | `observability` | Self-hosted LGTM stack, OTel Collector, Grafana Alloy |
 | `devbox` | Devbox workspace pod |
 
@@ -68,7 +67,7 @@ Apply whole workload directories:
 
 ```bash
 kubectl apply -f k8s/inbox/
-kubectl apply -f k8s/blog/
+kubectl apply -f k8s/billing-exporter/
 ```
 
 Apply single files:
@@ -87,16 +86,36 @@ kubectl apply -f k8s/<workload>/secret.yaml
 
 `secret.yaml` is gitignored cluster-wide.
 
-## Networking: one Gateway, many routes
+## Networking: nothing in the cluster is exposed externally
 
-The `infra` namespace owns a single GCP Global External ALB via the Gateway API. All external traffic goes through it. **Do not create additional `LoadBalancer` Services or standalone `Ingress` resources** — that spins up a new GCP load balancer (~$18/month each).
+There is **no Gateway, no `Ingress` and no GCP load balancer** in this project,
+and adding one is a deliberate decision, not a routine step. A Global External
+ALB costs ~$18/month for its forwarding rule whether it fronts one workload or
+twenty, and for a long time this project paid it to serve a single static blog.
 
-To expose a new workload externally:
-1. Add a `Service` (type: `ClusterIP`) in the `apps` namespace
-2. Add an `HTTPRoute` that attaches to `shared-gateway` in `infra`
-3. The wildcard TLS cert covers `*.drolet.cloud` automatically
+`k8s/infra/gateway.yaml` defines a shared Gateway and is kept for the day a
+workload genuinely needs in-cluster ingress. **It is not applied.** If you apply
+it, you are creating the load balancer, so say so out loud and expect the bill.
 
-Example:
+To expose something, in preference order:
+
+1. **Static site → Cloudflare Pages.** Add a `cloudflare_pages_project`, a
+   proxied `CNAME` to its `.subdomain`, and a `cloudflare_pages_domain` in
+   `cloudflare/drolet-cloud.tf`. `blog`, `finances` and `consulting` all follow
+   this pattern. Builds run on push to the production branch; TLS is
+   Cloudflare's edge certificate. Cost: $0, and no pod.
+2. **API or service → Cloud Run**, with a domain mapping and a DNS-only `CNAME`
+   to `ghs.googlehosted.com`. `inbox-api`, `tasks-api`, `schedule-api` and
+   `people-api` all follow this pattern.
+3. **Only if it must run in the cluster** — apply `k8s/infra/gateway.yaml` once,
+   then attach an `HTTPRoute` to `shared-gateway` per workload. One Gateway,
+   many routes: never a second Gateway, never a standalone `Ingress`, never a
+   `LoadBalancer` Service. Each of those is another $18/month.
+
+The wildcard `*.drolet.cloud` cert in GCP Certificate Manager only applies to
+option 3. Options 1 and 2 bring their own certificates.
+
+Example, for option 3 only:
 
 ```yaml
 apiVersion: gateway.networking.k8s.io/v1
@@ -169,6 +188,6 @@ helm install keda kedacore/keda --namespace keda --create-namespace
 ## Cost notes
 
 - GKE Autopilot: free cluster management fee (covered by $74.40/month credit); pods billed per-second on resource requests
-- GCP Global ALB: ~$18/month for the forwarding rule — shared across all routes
+- GCP Global ALB: none deployed. One costs ~$18/month for its forwarding rule — see the networking section before creating one
 - Postgres pod (250m CPU, 512Mi, always-on): ~$10/month
 - Scale pods to 0 when not in use; destroy with `terraform destroy` when done entirely
