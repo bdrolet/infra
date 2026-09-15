@@ -15,3 +15,15 @@ variable "cluster_name" {
   type        = string
   default     = "bens-k8s"
 }
+
+variable "billing_account_id" {
+  description = "GCP billing account the project bills to"
+  type        = string
+  default     = "011161-84DB9A-69D458"
+}
+
+variable "monthly_budget_usd" {
+  description = "Monthly budget amount, in USD, that alert thresholds are a percentage of"
+  type        = number
+  default     = 75
+}
