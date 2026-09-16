@@ -20,7 +20,7 @@ k8s/                Kubernetes manifests, one directory per workload
   infra/            Shared Gateway manifests — NOT applied; see the networking section
   billing-exporter/ CronJob: GCP billing (BigQuery) → OTLP metrics to Grafana Cloud
 billing-exporter/   Python source + Dockerfile for the billing-exporter image
-observability/      Self-hosted LGTM stack + OTel Collector; Grafana Alloy (GCP infra metrics → Grafana Cloud)
+observability/      Grafana Alloy (GCP infra metrics → Grafana Cloud)
 devbox/             Long-running workspace pod for experiments
 ```
 
@@ -30,7 +30,7 @@ devbox/             Long-running workspace pod for experiments
 |-----------|-----------------|
 | `apps` | Application workloads (billing-exporter) |
 | `infra` | Not created. `k8s/infra/` is unapplied — applying it creates a load balancer |
-| `observability` | Self-hosted LGTM stack, OTel Collector, Grafana Alloy |
+| `observability` | Grafana Alloy |
 | `devbox` | Devbox workspace pod |
 
 ## Local setup
@@ -156,15 +156,16 @@ spec:
 
 ## Observability
 
-Two destinations, split by signal source:
-
-**Self-hosted LGTM** (`observability/`) — app-level signals. Apps instrument via the OpenTelemetry SDK (traces, metrics, logs). The OTel Collector DaemonSet receives OTLP on `localhost:4317` (gRPC) and `localhost:4318` (HTTP) and forwards to the self-hosted LGTM stack. Grafana is at `observability.drolet.cloud`.
-
-**Grafana Cloud** — infrastructure and billing signals the OTel Collector can't see:
-- **Grafana Alloy** (`observability/alloy/`) scrapes GCP Cloud Monitoring (ALB, Pub/Sub, GKE, Artifact Registry) and `remote_write`s to Grafana Cloud Prometheus.
+Every metric, trace and app log goes to **Grafana Cloud**:
+- **Grafana Alloy** (`observability/alloy/`) scrapes GCP Cloud Monitoring (ALB, Pub/Sub, GKE, Artifact Registry) and `remote_write`s to Grafana Cloud Prometheus. It is the only workload in the `observability` namespace.
 - **billing-exporter** (`k8s/billing-exporter/`) is a CronJob that queries GCP billing from BigQuery and pushes cost metrics to Grafana Cloud via OTLP.
+- **`tasks`, `schedule` and `inbox`** instrument with the OpenTelemetry SDK and export OTLP to Grafana Cloud directly, via `GRAFANA_OTLP_ENDPOINT`.
 
-> GKE Autopilot blocks `hostPath` and `hostNetwork` — stdout log tailing is not available. All app signals must flow through the OTel SDK.
+There is **no in-cluster OTel Collector and no self-hosted LGTM stack** (D1
+removed both). Nothing listens on `localhost:4317` / `4318`; point new services
+at Grafana Cloud the same way the existing ones are.
+
+Container stdout/stderr goes to **Cloud Logging** — see `logging_config` below.
 
 ### What GKE itself sends (`monitoring_config` in `terraform/main.tf`)
 
