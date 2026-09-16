@@ -22,6 +22,7 @@ k8s/                Kubernetes manifests, one directory per workload
 billing-exporter/   Python source + Dockerfile for the billing-exporter image
 observability/      Grafana Alloy (GCP infra metrics → Grafana Cloud)
 devbox/             Long-running workspace pod for experiments
+artifact-registry/  Cleanup policies for the registry repos no Terraform owns
 ```
 
 ## Namespaces
@@ -154,6 +155,44 @@ spec:
 
 **Artifact Registry**: Docker repos at `us-central1-docker.pkg.dev/bens-project-462804/<repo-name>/`. Each workload has its own repo. Add new repos via `terraform/main.tf`.
 
+**Every repo carries a cleanup policy (D4), and a new repo must too.** Every
+deploy retags `:latest` and leaves the previous image untagged, so a repo with no
+policy grows by one image per deploy forever. That is how the project got to
+218 GiB (~$20/month), 214 GiB of it in `gcf-artifacts` and `inbox`. The
+standard rule, copied from `google_artifact_registry_repository.billing_exporter`:
+
+- `delete-untagged-after-7d`: DELETE untagged versions older than 7 days
+- `keep-3-most-recent`: KEEP the 3 most recent versions of each package, tagged
+  or not; KEEP wins over DELETE
+
+Tagged versions are never deleted: today every package has exactly one tag
+(`latest`). The policy lives with whatever owns the repo. Most repos are not in
+this repo, so check the other states before calling one unmanaged:
+
+| Repo | Owner | Rule |
+|---|---|---|
+| `billing-exporter` | infra `terraform/main.tf` | standard |
+| `inbox`, `tasks`, `schedule`, `people`, `docs` | each repo's `terraform/api.tf` (GCS state) | standard |
+| `gcf-artifacts` | Cloud Functions creates it; policy set by `artifact-registry/set-cleanup-policies.sh` | keep newest 1, delete untagged after 1 day |
+| `devbox` | created by hand (README); same script | standard |
+
+`gcf-artifacts` holds Cloud Functions build output, and every function serves
+the newest image in its package, so older ones have no rollback value. Under the
+standard rule it would average ~19 GiB, because each inbox function build adds
+a ~3 GiB layer. After a cleanup the project sits at roughly 13–20 GiB, and the
+live inbox images are ~13 GiB of that. Going lower means making those images
+smaller, not tightening retention.
+
+A policy set with `cleanup_policy_dry_run = true` / `--dry-run` reports only
+through the Artifact Registry DATA_WRITE audit log
+(`google_project_iam_audit_config.artifactregistry`), about a day after it
+is set:
+
+```bash
+gcloud logging read 'protoPayload.serviceName="artifactregistry.googleapis.com" AND logName:"data_access"' \
+  --project bens-project-462804 --freshness 2d
+```
+
 ## Observability
 
 Every metric, trace and app log goes to **Grafana Cloud**:
@@ -206,6 +245,7 @@ introducing one block can make the provider want to manage its neighbour.
 - GKE Autopilot: free cluster management fee (covered by $74.40/month credit); pods billed per-second on resource requests
 - GCP Global ALB: none deployed. One costs ~$18/month for its forwarding rule — see the networking section before creating one
 - Cloud Monitoring: GKE metric component groups billed ~$42/month as Prometheus samples until D8 trimmed them to `SYSTEM_COMPONENTS` — see the observability section before enabling any of them again
+- Artifact Registry: ~$20/month for 218 GiB until D4 added cleanup policies — see the Artifact Registry section before creating a repo without one
 - Scale pods to 0 when not in use; destroy with `terraform destroy` when done entirely
 
 A **monthly billing budget of $75** is managed in `terraform/main.tf`
