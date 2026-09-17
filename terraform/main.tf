@@ -18,15 +18,6 @@ resource "google_project_service" "artifactregistry" {
   disable_on_destroy = false
 }
 
-resource "google_artifact_registry_repository" "blog" {
-  repository_id = "blog"
-  format        = "DOCKER"
-  location      = var.region
-  description   = "Astro blog image"
-
-  depends_on = [google_project_service.artifactregistry]
-}
-
 resource "google_compute_firewall" "gke_health_checks" {
   name    = "gke-bens-k8s-allow-health-checks"
   network = "default"
@@ -85,7 +76,40 @@ resource "google_artifact_registry_repository" "billing_exporter" {
   location      = var.region
   description   = "GCP billing exporter image"
 
+  # Cleanup policy (D4) — the convention for every repo; see the Artifact
+  # Registry section of CLAUDE.md.
+  cleanup_policy_dry_run = false
+
+  cleanup_policies {
+    id     = "delete-untagged-after-7d"
+    action = "DELETE"
+    condition {
+      tag_state  = "UNTAGGED"
+      older_than = "604800s"
+    }
+  }
+
+  cleanup_policies {
+    id     = "keep-3-most-recent"
+    action = "KEEP"
+    most_recent_versions {
+      keep_count = 3
+    }
+  }
+
   depends_on = [google_project_service.artifactregistry]
+}
+
+# Cleanup-policy dry runs report only through Artifact Registry's DATA_WRITE
+# Data Access audit logs, which are off by default. DATA_WRITE covers pushes
+# and deletions only (not pulls), so the volume is negligible.
+resource "google_project_iam_audit_config" "artifactregistry" {
+  project = var.project_id
+  service = "artifactregistry.googleapis.com"
+
+  audit_log_config {
+    log_type = "DATA_WRITE"
+  }
 }
 
 # --- Grafana Alloy (Cloud Monitoring reader) ---

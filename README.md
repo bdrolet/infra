@@ -58,6 +58,8 @@ gcloud artifacts repositories create devbox \
   --project=bens-project-462804
 ```
 
+The repo's cleanup policy lives in `artifact-registry/set-cleanup-policies.sh`.
+
 Build and push:
 
 ```bash
