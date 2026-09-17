@@ -77,8 +77,8 @@ resource "google_artifact_registry_repository" "billing_exporter" {
   description   = "GCP billing exporter image"
 
   # Cleanup policy (D4) — the convention for every repo; see the Artifact
-  # Registry section of CLAUDE.md. Dry run until its audit-log report is read.
-  cleanup_policy_dry_run = true
+  # Registry section of CLAUDE.md.
+  cleanup_policy_dry_run = false
 
   cleanup_policies {
     id     = "delete-untagged-after-7d"
