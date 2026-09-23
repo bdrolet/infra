@@ -102,7 +102,15 @@ To expose something, in preference order:
    Cloudflare's edge certificate. Cost: $0, and no pod.
 2. **API or service → Cloud Run**, with a domain mapping and a DNS-only `CNAME`
    to `ghs.googlehosted.com`. `inbox-api`, `tasks-api`, `schedule-api` and
-   `people-api` all follow this pattern.
+   `people-api` all follow this pattern. Cloud Run APIs authenticate with
+   IAM: grant `roles/run.invoker` per caller (`user:` for the laptop, the
+   caller's service account for service-to-service), set `custom_audiences`
+   to the service's hostname, and never `allUsers`. `allUsers` is reserved
+   for endpoints a third party or a phone must reach anonymously — today the
+   webhook functions and `inbox-redirect`. Callers send
+   `gcloud auth print-identity-token`; services mint tokens via the metadata
+   server (`clients/gcp_auth.py` in tasks and inbox). See
+   `docs/specs/2026-09-22-api-auth-iam-design.md`.
 3. **Only if it must run in the cluster** — apply `k8s/infra/gateway.yaml` once,
    then attach an `HTTPRoute` to `shared-gateway` per workload. One Gateway,
    many routes: never a second Gateway, never a standalone `Ingress`, never a
