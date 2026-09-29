@@ -4,7 +4,7 @@ resource "cloudflare_pages_project" "consulting" {
   production_branch = "main"
 
   build_config {
-    build_command   = "next build"
+    build_command   = "npm run build"
     destination_dir = "out"
   }
 
