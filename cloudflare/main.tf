@@ -39,6 +39,31 @@ resource "cloudflare_record" "consulting" {
   depends_on = [cloudflare_pages_project.consulting]
 }
 
+# www.drolet.ai redirects to the apex. The record only has to exist and be
+# proxied so the page rule below sees the request; its target is never
+# served. A page rule rather than a single redirect rule because the API
+# token has Page Rules but not Zone Rulesets permission.
+resource "cloudflare_record" "consulting_www" {
+  zone_id = var.zone_id
+  name    = "www"
+  type    = "CNAME"
+  content = var.domain_name
+  proxied = true
+}
+
+resource "cloudflare_page_rule" "consulting_www_redirect" {
+  zone_id  = var.zone_id
+  target   = "www.${var.domain_name}/*"
+  priority = 1
+
+  actions {
+    forwarding_url {
+      url         = "https://${var.domain_name}/$1"
+      status_code = 301
+    }
+  }
+}
+
 resource "cloudflare_record" "ms_verify" {
   zone_id = var.zone_id
   name    = "@"
