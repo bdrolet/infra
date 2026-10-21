@@ -144,3 +144,14 @@ resource "cloudflare_record" "changectl_api" {
   proxied = false
   ttl     = 60
 }
+
+# Google Search Console domain verification for drolet.ai, needed before Cloud
+# Run domain mappings under drolet.ai will apply (changectl: bdrolet/changectl).
+# Keep it: Google re-checks the record periodically.
+resource "cloudflare_record" "drolet_ai_google_site_verification" {
+  zone_id = var.zone_id
+  name    = "@"
+  type    = "TXT"
+  content = "google-site-verification=tG3WDO3SzjqWfEi9PCcXtzTffcPmbgX7up5ReK7jBs8"
+  ttl     = 300
+}
