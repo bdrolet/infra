@@ -123,3 +123,35 @@ resource "cloudflare_pages_domain" "consulting_blog" {
   project_name = cloudflare_pages_project.consulting_blog.name
   domain       = "blog.drolet.ai"
 }
+
+# changectl (github.com/bdrolet/changectl) runs on Cloud Run in its own GCP
+# project; these CNAMEs point the hostnames at Google's domain-mapping front
+# end. Merge after the google_cloud_run_domain_mapping resources exist there.
+resource "cloudflare_record" "changectl_web" {
+  zone_id = var.zone_id
+  name    = "changectl"
+  type    = "CNAME"
+  content = "ghs.googlehosted.com"
+  proxied = false
+  ttl     = 60
+}
+
+resource "cloudflare_record" "changectl_api" {
+  zone_id = var.zone_id
+  name    = "api.changectl"
+  type    = "CNAME"
+  content = "ghs.googlehosted.com"
+  proxied = false
+  ttl     = 60
+}
+
+# Google Search Console domain verification for drolet.ai, needed before Cloud
+# Run domain mappings under drolet.ai will apply (changectl: bdrolet/changectl).
+# Keep it: Google re-checks the record periodically.
+resource "cloudflare_record" "drolet_ai_google_site_verification" {
+  zone_id = var.zone_id
+  name    = "@"
+  type    = "TXT"
+  content = "google-site-verification=tG3WDO3SzjqWfEi9PCcXtzTffcPmbgX7up5ReK7jBs8"
+  ttl     = 300
+}
