@@ -167,3 +167,24 @@ resource "cloudflare_record" "drolet_ai_dmarc" {
   content = "v=DMARC1; p=none; rua=mailto:ben@drolet.ai"
   ttl     = 300
 }
+
+# Microsoft 365 DKIM for drolet.ai: keys created in Defender (Email
+# authentication settings → DKIM → drolet.ai) on 2026-10-22; these CNAMEs
+# publish them. Signing is enabled in the same Defender page once they resolve.
+resource "cloudflare_record" "drolet_ai_dkim_selector1" {
+  zone_id = var.zone_id
+  name    = "selector1._domainkey"
+  type    = "CNAME"
+  content = "selector1-drolet-ai._domainkey.droletcloud.w-v1.dkim.mail.microsoft"
+  ttl     = 300
+  proxied = false
+}
+
+resource "cloudflare_record" "drolet_ai_dkim_selector2" {
+  zone_id = var.zone_id
+  name    = "selector2._domainkey"
+  type    = "CNAME"
+  content = "selector2-drolet-ai._domainkey.droletcloud.w-v1.dkim.mail.microsoft"
+  ttl     = 300
+  proxied = false
+}
