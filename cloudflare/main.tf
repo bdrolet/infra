@@ -155,3 +155,15 @@ resource "cloudflare_record" "drolet_ai_google_site_verification" {
   content = "google-site-verification=tG3WDO3SzjqWfEi9PCcXtzTffcPmbgX7up5ReK7jBs8"
   ttl     = 300
 }
+
+# DMARC for drolet.ai (people: funded-founder campaign preflight requires it).
+# p=none observes only: receivers report alignment to rua, nothing is rejected.
+# Tighten to quarantine once DKIM is enabled in Microsoft 365 for this domain
+# (the selector1/selector2 CNAMEs) and the reports look clean.
+resource "cloudflare_record" "drolet_ai_dmarc" {
+  zone_id = var.zone_id
+  name    = "_dmarc"
+  type    = "TXT"
+  content = "v=DMARC1; p=none; rua=mailto:ben@drolet.ai"
+  ttl     = 300
+}
