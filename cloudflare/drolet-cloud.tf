@@ -195,6 +195,17 @@ resource "cloudflare_record" "pipelines_api" {
   ttl     = 60
 }
 
+# Cloud Run domain mapping for pipelines.drolet.cloud (the pipelines web review screen,
+# service pipelines-web; same shape as pipelines-api).
+resource "cloudflare_record" "pipelines_web" {
+  zone_id = cloudflare_zone.drolet_cloud.id
+  name    = "pipelines"
+  type    = "CNAME"
+  content = "ghs.googlehosted.com"
+  proxied = false
+  ttl     = 60
+}
+
 output "drolet_cloud_nameservers" {
   description = "Cloudflare nameservers to set at GoDaddy for drolet.cloud"
   value       = cloudflare_zone.drolet_cloud.name_servers
